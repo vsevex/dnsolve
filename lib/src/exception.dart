@@ -1,5 +1,5 @@
 /// Represents an [Exception] that occured while processing an DNS request.
-/// 
+///
 /// It contains information about the status code, headers, and body of the
 /// response.
 class ResponseException implements Exception {
