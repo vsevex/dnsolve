@@ -10,7 +10,7 @@ To install DNSolve, add the following dependency to your `pubspec.yaml` file:
 
 ```dart
 dependencies:
-  dnsolve: ^0.5.0
+  dnsolve: ^0.6.0
 ```
 
 ### Usage
