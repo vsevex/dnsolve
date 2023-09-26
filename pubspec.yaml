@@ -1,6 +1,6 @@
 name: dnsolve
 description: Pure Dart library that provides an easy way to perform DNS lookups
-version: 0.5.0
+version: 0.5.0+1
 repository: https://github.com/vsevex/dnsolve
 issue_tracker: https://github.com/vsevex/dnsolve/issues
 topics: [network, http, dns]
@@ -14,3 +14,11 @@ dev_dependencies:
 
 dependencies:
   http: ^1.1.0
+
+platforms:
+  android:
+  ios:
+  linux:
+  macos:
+  web:
+  windows:
