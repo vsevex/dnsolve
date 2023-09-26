@@ -18,7 +18,7 @@ class _Answer {
   }
 
   @override
-  String toString() => '''answer($records)''';
+  String toString() => '''$records''';
 }
 
 class _Record {
@@ -42,7 +42,8 @@ class _Record {
       );
 
   @override
-  String toString() => '''name: $name, type: $rType, ttl: $ttl, data: $data''';
+  String toString() =>
+      '''(name: $name, type: $rType, ttl: $ttl, data: $data)''';
 
   String get toBind {
     final buffer = StringBuffer();

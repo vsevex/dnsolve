@@ -18,5 +18,5 @@ class _Question {
   }
 
   @override
-  String toString() => '''question(name: $name, rType: $rType)''';
+  String toString() => '''(name: $name, rType: $rType)''';
 }

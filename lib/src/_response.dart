@@ -57,5 +57,5 @@ class ResolveResponse {
 
   @override
   String toString() =>
-      '''status: $status, truncation: $tc, recursion desired(rd): $rd, recursion available(ra): $ra, authenticated data(ad): $ad, checking disabled(cd): $cd, comment: $comment, answer: [$answer], questions: $questions''';
+      '''status: $status, truncation: $tc, recursion desired(rd): $rd, recursion available(ra): $ra, authenticated data(ad): $ad, checking disabled(cd): $cd, comment: $comment, answer: $answer, questions: $questions''';
 }
