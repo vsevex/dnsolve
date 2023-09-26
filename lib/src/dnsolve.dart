@@ -44,10 +44,10 @@ enum DNSProvider { google, cloudflare }
 
 class DNSolve {
   DNSolve() {
-    client = http.Client();
+    _client = http.Client();
   }
 
-  late final http.Client client;
+  late final http.Client _client;
 
   /// A map that associates [DNSProvider] enum values with their respective DNS
   /// provider URLs.
@@ -139,7 +139,7 @@ class DNSolve {
       }
     }
 
-    final response = await client.get(uri, headers: headers);
+    final response = await _client.get(uri, headers: headers);
     return _handleResponse(response);
   }
 
