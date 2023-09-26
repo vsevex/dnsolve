@@ -1,6 +1,4 @@
-/// Support for doing something awesome.
-///
-/// More dartdocs go here.
+/// Provider of an easy way of performing DNS lookups.
 library;
 
 export 'src/dnsolve.dart';
