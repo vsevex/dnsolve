@@ -1,5 +1,7 @@
 # DNSolve
 
+[![License: MIT][license_badge]][license_link]
+
 DNSolve is a Dart library that provides an easy way to perform DNS lookups. It supports both forward and reverse DNS lookups, and can be used with different DNS providers.
 
 ## Installation
@@ -58,3 +60,10 @@ The `answer` property contains a list of `Record` objects. Each `Record` object 
 - `rType`: The type of the DNS record.
 - `ttl`: The time to live of the DNS record.
 - `data`: The data of the DNS record.
+
+## Contributing to DNSolve
+
+I do welcome and appreciate contributions from the community to enhance the `DNSolve`. If you have any improvements, bug fixes, or new features to contribute, you can do so by creating a pull request.
+
+[license_badge]: https://img.shields.io/badge/license-MIT-blue.svg
+[license_link]: https://opensource.org/licenses/MIT
