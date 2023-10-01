@@ -10,7 +10,7 @@ To install DNSolve, add the following dependency to your `pubspec.yaml` file:
 
 ```dart
 dependencies:
-  dnsolve: ^0.6.0
+  dnsolve: ^1.0.0
 ```
 
 ### Usage
@@ -58,7 +58,7 @@ The `lookup()` method returns a `ResolveResponse` object. This object contains t
 - `answer`: The DNS answer.
 - Some other additional properties.
 
-The `answer` property contains a list of `Record` objects. Each `Record` object represents a single DNS record. The `Record` object has the following properties:
+The `answer` property contains a list of `Record` and `SRVRecord` objects. Each `Record` object represents a single DNS record. The `Record` object has the following properties:
 
 - `name`: The name of the DNS record.
 - `rType`: The type of the DNS record.
