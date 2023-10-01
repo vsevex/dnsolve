@@ -12,6 +12,10 @@ String _handleResponse(http.Response response) {
   }
 }
 
+/// Represents a response from a DNS resolution operation.
+///
+/// This class includes information about the resolution status, flags,
+/// comments, resolved answer, and the list of questions queried.
 class ResolveResponse {
   const ResolveResponse({
     required this.status,
@@ -25,16 +29,38 @@ class ResolveResponse {
     required this.questions,
   });
 
+  /// The status code indicating the result of the DNS resolution.
   final int? status;
+
+  /// Indicates if the response was truncated.
   final bool? tc;
+
+  /// Indicates if recursion was desired in the request.
   final bool? rd;
+
+  /// Indicates if recursion is available in the response.
   final bool? ra;
+
+  /// Indicates if the data in the response is authenticated.
   final bool? ad;
+
+  /// Indicates if checking is disabled in the response.
   final bool? cd;
+
+  /// Additional comments or information related to the resolution response.
   final String? comment;
+
+  /// The resolved answer containing DNS records.
   final _Answer? answer;
+
+  /// List of questions queried in the resolution request.
   final List<_Question>? questions;
 
+  /// Constructs a [ResolveResponse] instance from JSON data.
+  ///
+  /// The [json] parameter should be a map containing the fields of a DNS
+  /// resolution response. Returns a [ResolveResponse] instance with parsed
+  /// data.
   factory ResolveResponse.fromJson(Map<String, dynamic> json) =>
       ResolveResponse(
         status: json['Status'] as int?,
