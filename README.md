@@ -4,6 +4,10 @@
 
 DNSolve is a Dart library that provides an easy way to perform DNS lookups. It supports both forward and reverse DNS lookups, and can be used with different DNS providers.
 
+## Overview
+
+This project provides a convenient API wrapper for interacting with public DNS services. While it might appear to function as a traditional DNS client, it's essential to note that it operates by sending HTTP GET requests to public DNS API endpoints like Google and Cloudflare.
+
 ## Installation
 
 To install DNSolve, add the following dependency to your `pubspec.yaml` file:
