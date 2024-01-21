@@ -26,7 +26,7 @@ To perform a DNS lookup, you can use the `lookup()` method. This method takes th
 - `type`: The DNS record type to look up.
 - `provider`: The DNS provider to use.
 
-The following code snippet shows how to perform a DNS lookup for the domain `example.com`:
+The following code snippet shows how to perform an SRV lookup which is located under the `vsevex.me` domain:
 
 ```dart
 import 'dart:developer';
