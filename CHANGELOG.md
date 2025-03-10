@@ -1,4 +1,6 @@
-# 1.0.0 - Stable Release
+# 1.0.1
+
+## 1.0.0 - Stable Release
 
 ## Stability and Documentation Enhancements
 
