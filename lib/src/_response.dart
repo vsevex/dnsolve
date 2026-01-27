@@ -51,10 +51,10 @@ class ResolveResponse {
   final String? comment;
 
   /// The resolved answer containing DNS records.
-  final _Answer? answer;
+  final Answer? answer;
 
   /// List of questions queried in the resolution request.
-  final List<_Question>? questions;
+  final List<Question>? questions;
 
   /// Constructs a [ResolveResponse] instance from JSON data.
   ///
@@ -70,13 +70,13 @@ class ResolveResponse {
         ad: json['AD'] as bool?,
         cd: json['CD'] as bool?,
         comment: json['comment'] as String?,
-        answer: _Answer.fromJson(json['Answer'] as List<dynamic>?),
+        answer: Answer.fromJson(json['Answer'] as List<dynamic>?),
         questions: json['Question'] == null
             ? null
             : (json['Question'] as List<dynamic>)
                 .map(
                   (question) =>
-                      _Question.fromJson(question as Map<String, dynamic>),
+                      Question.fromJson(question as Map<String, dynamic>),
                 )
                 .toList(),
       );
