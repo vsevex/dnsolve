@@ -2,16 +2,18 @@ part of 'dnsolve.dart';
 
 /// A builder for creating [DNSolve] instances with custom configuration.
 class DNSolveBuilder {
-  http.Client? _client;
+  DNSServer _server = DNSServer.system;
   bool _enableCache = false;
   int _cacheMaxSize = 100;
   bool _enableStatistics = false;
   int _maxRetries = 0;
   Duration _retryDelay = const Duration(milliseconds: 500);
 
-  /// Sets a custom HTTP client.
-  DNSolveBuilder withClient(http.Client client) {
-    _client = client;
+  /// Sets the DNS server to use for all queries.
+  ///
+  /// Defaults to [DNSServer.system] which uses the OS-configured resolver.
+  DNSolveBuilder withServer(DNSServer server) {
+    _server = server;
     return this;
   }
 
@@ -42,7 +44,7 @@ class DNSolveBuilder {
 
   /// Builds and returns a configured [DNSolve] instance.
   DNSolve build() => DNSolve(
-        client: _client,
+        server: _server,
         enableCache: _enableCache,
         cacheMaxSize: _cacheMaxSize,
         enableStatistics: _enableStatistics,
