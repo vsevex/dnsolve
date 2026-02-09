@@ -1,6 +1,37 @@
-# 2.0.0
+# 3.0.0
 
 ## Breaking Changes
+
+- **Native DNS Resolution**: Replaced DNS-over-HTTPS (DoH) with native DNS resolution via Rust FFI. Queries are now sent directly over UDP/TCP port 53 using [hickory-dns](https://github.com/hickory-dns/hickory-dns) instead of HTTP requests to Google/Cloudflare.
+
+- **DNS Server Configuration**: `DNSProvider` enum replaced with `DNSServer` class:
+  - `DNSServer.system` - System default resolver (default, no external traffic)
+  - `DNSServer.google` - Google Public DNS (8.8.8.8)
+  - `DNSServer.cloudflare` - Cloudflare DNS (1.1.1.1)
+  - `DNSServer.custom('ip')` - Any custom DNS server
+
+- **HTTP Client Removed**: The `client` constructor parameter and `withClient()` builder method have been removed. Use `server`/`withServer()` instead.
+
+- **Web Support Removed**: `dart:ffi` does not work in web browsers. The `web` platform has been removed.
+
+- **Dependencies Changed**: The `http` package dependency replaced with `ffi`. A compiled native Rust library is now required.
+
+- **Exception Changes**: `ResponseException` removed. `NativeException` added for FFI-specific errors.
+
+## New Features
+
+- **Native DNS Resolution**: Direct DNS protocol communication -- no HTTP overhead
+- **System Resolver Support**: Uses OS-configured DNS by default (no external traffic)
+- **Custom DNS Servers**: Query any DNS server by IP address
+- **Per-Query Server Override**: Override the default server for individual queries
+
+## Migration Guide
+
+See README.md for detailed migration instructions from v2.x to v3.0.0.
+
+## 2.0.0
+
+## Breaking Changes (2.0.0)
 
 - **Resource Management**: `DNSolve` instances must now be disposed after use. Always call `dispose()` when done:
 
@@ -21,7 +52,7 @@
 
 - **Return Types**: `reverseLookup()` now returns `List<Record>` instead of `List<_Record>`
 
-## New Features
+## New Features (2.0.0)
 
 - **Enhanced Record Parsing**: Added structured parsing for MX, CAA, SOA, and TXT records with dedicated classes:
   - `MXRecord` - Mail Exchange records with priority and exchange
@@ -81,7 +112,7 @@
 - Enhanced type safety with proper error handling
 - Better resource management with proper cleanup
 
-## Migration Guide
+## Migration Guide (v1 -> v2)
 
 See README.md for detailed migration instructions from v1.x to v2.0.0.
 
