@@ -1,13 +1,12 @@
 // ignore_for_file: avoid_print
 
 import 'package:dnsolve/dnsolve.dart';
-import 'package:http/http.dart' as http;
 
-/// Comprehensive example demonstrating all DNSolve v2.0.0 features
+/// Comprehensive example demonstrating all DNSolve v3.0.0 features
 Future<void> main() async {
-  print('=== DNSolve v2.0.0 Feature Examples ===\n');
+  print('=== DNSolve v3.0.0 Feature Examples ===\n');
 
-  // Example 1: Basic Forward Lookup
+  // Example 1: Basic Forward Lookup (system DNS)
   await exampleBasicLookup();
 
   // Example 2: SRV Record Lookup with Parsed Records
@@ -16,8 +15,8 @@ Future<void> main() async {
   // Example 3: Reverse DNS Lookup (IPv4 and IPv6)
   await exampleReverseLookup();
 
-  // Example 4: Custom HTTP Client and Timeout
-  await exampleCustomClient();
+  // Example 4: Custom DNS Server and Timeout
+  await exampleCustomServer();
 
   // Example 5: Batch Lookups
   await exampleBatchLookups();
@@ -39,7 +38,7 @@ Future<void> main() async {
 
 /// Example 1: Basic Forward Lookup
 Future<void> exampleBasicLookup() async {
-  print('1. Basic Forward Lookup');
+  print('1. Basic Forward Lookup (system DNS)');
   print('-' * 40);
 
   final dnsolve = DNSolve();
@@ -150,22 +149,21 @@ Future<void> exampleReverseLookup() async {
   print('');
 }
 
-/// Example 4: Custom HTTP Client and Timeout
-Future<void> exampleCustomClient() async {
-  print('4. Custom HTTP Client and Timeout');
+/// Example 4: Custom DNS Server and Timeout
+Future<void> exampleCustomServer() async {
+  print('4. Custom DNS Server and Timeout');
   print('-' * 40);
 
-  final client = http.Client();
-  final dnsolve = DNSolve(client: client);
+  // Use Cloudflare DNS server
+  final dnsolve = DNSolve(server: DNSServer.cloudflare);
 
   try {
     final response = await dnsolve.lookup(
       'google.com',
-      provider: DNSProvider.cloudflare,
       timeout: const Duration(seconds: 5),
     );
 
-    print('Provider: Cloudflare');
+    print('Server: Cloudflare (1.1.1.1)');
     print('Timeout: 5 seconds');
     print('Status: ${response.status}');
     if (response.answer?.records != null) {
@@ -173,6 +171,29 @@ Future<void> exampleCustomClient() async {
     }
   } finally {
     dnsolve.dispose();
+  }
+
+  // Per-query server override
+  final dnsolve2 = DNSolve();
+  try {
+    final response = await dnsolve2.lookup(
+      'google.com',
+      server: DNSServer.google,
+    );
+    print('\nPer-query override to Google DNS:');
+    print('Status: ${response.status}');
+  } finally {
+    dnsolve2.dispose();
+  }
+
+  // Custom DNS server
+  final dnsolve3 = DNSolve(server: const DNSServer.custom('9.9.9.9'));
+  try {
+    final response = await dnsolve3.lookup('example.com');
+    print('\nCustom server (Quad9 - 9.9.9.9):');
+    print('Status: ${response.status}');
+  } finally {
+    dnsolve3.dispose();
   }
 
   print('');
@@ -274,6 +295,7 @@ Future<void> exampleBuilderPattern() async {
   print('-' * 40);
 
   final dnsolve = DNSolve.builder()
+      .withServer(DNSServer.cloudflare)
       .withCache()
       .withStatistics()
       .withRetries(3)
@@ -282,6 +304,7 @@ Future<void> exampleBuilderPattern() async {
 
   try {
     print('Configuration:');
+    print('  Server: Cloudflare (1.1.1.1)');
     print('  Cache: enabled (max size: 100)');
     print('  Statistics: enabled');
     print('  Max retries: 3');
@@ -402,13 +425,10 @@ Future<void> exampleErrorHandling() async {
     // Non-existent domain
     print('\nTesting non-existent domain:');
     try {
-      final response = await dnsolve.lookup(
+      await dnsolve.lookup(
         'this-domain-definitely-does-not-exist-12345.com',
         timeout: const Duration(seconds: 5),
       );
-      if (response.status != null && response.status != 0) {
-        print('  DNS Status: ${response.status}');
-      }
     } on DNSLookupException catch (e) {
       print('  Caught DNSLookupException: ${e.message}');
       if (e.statusCode != null) {
@@ -416,16 +436,18 @@ Future<void> exampleErrorHandling() async {
       }
     } on TimeoutException catch (e) {
       print('  Caught TimeoutException: ${e.message}');
-    } on NetworkException catch (e) {
-      print('  Caught NetworkException: ${e.message}');
+    } on NativeException catch (e) {
+      print('  Caught NativeException: ${e.message}');
     }
 
     // Invalid IP for reverse lookup
     print('\nTesting invalid IP:');
     try {
       await dnsolve.reverseLookup('invalid.ip.address');
-    } on InvalidDomainException catch (e) {
-      print('  Caught InvalidDomainException: ${e.message}');
+    } on DNSLookupException catch (e) {
+      print('  Caught DNSLookupException: ${e.message}');
+    } on NativeException catch (e) {
+      print('  Caught NativeException: ${e.message}');
     }
   } finally {
     dnsolve.dispose();
