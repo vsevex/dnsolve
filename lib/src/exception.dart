@@ -6,31 +6,6 @@ abstract class DNSolveException implements Exception {
   const DNSolveException();
 }
 
-/// Represents an [Exception] that occurred while processing a DNS request.
-///
-/// It contains information about the status code, headers, and body of the
-/// response.
-class ResponseException extends DNSolveException {
-  const ResponseException({
-    required this.statusCode,
-    required this.headers,
-    required this.body,
-  }) : super();
-
-  /// The status code of the response.
-  final int statusCode;
-
-  /// The headers of the response.
-  final Map<String, String> headers;
-
-  /// The body of the response.
-  final String body;
-
-  @override
-  String toString() =>
-      '''Exception(Status Code: $statusCode, Response Headers: $headers, Response Body: $body)''';
-}
-
 /// An exception indicating that an error occurred while parsing or processing a
 /// Service (SRV) record.
 ///
@@ -112,4 +87,24 @@ class InvalidDomainException extends DNSolveException {
   String toString() => input != null
       ? 'InvalidDomainException: $message (Input: $input)'
       : 'InvalidDomainException: $message';
+}
+
+/// An exception indicating that the native FFI library could not be loaded
+/// or a native function call failed.
+///
+/// This exception is thrown when there are issues with the native DNS resolver
+/// library (e.g., missing library file, symbol lookup failure).
+class NativeException extends DNSolveException {
+  const NativeException(this.message, [this.originalError]);
+
+  /// A human-readable error message describing the native error.
+  final String message;
+
+  /// The original error that caused this exception, if available.
+  final Object? originalError;
+
+  @override
+  String toString() => originalError != null
+      ? 'NativeException: $message (Original: $originalError)'
+      : 'NativeException: $message';
 }
