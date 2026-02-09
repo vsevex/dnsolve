@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:isolate';
 
 import 'package:dnsolve/src/exception.dart';
-
-import 'package:http/http.dart' as http;
+import 'package:dnsolve/src/native_bindings.dart';
 
 part '_answer.dart';
 part '_question.dart';
@@ -44,13 +44,50 @@ enum RecordType {
   mx,
 }
 
-/// An enumeration that represents different DNS service providers.
-enum DNSProvider { google, cloudflare }
-
-/// A DNS resolver that performs DNS lookups using DNS-over-HTTPS (DoH) providers.
+/// Represents a DNS server to use for resolution.
 ///
-/// This class provides methods to perform forward and reverse DNS lookups
-/// using public DNS providers like Google and Cloudflare.
+/// Use one of the predefined constants ([system], [google], [cloudflare]) or
+/// create a custom server with [DNSServer.custom].
+class DNSServer {
+  /// Uses the system's default DNS resolver (/etc/resolv.conf on Unix,
+  /// system DNS settings on macOS/Windows).
+  static const system = DNSServer._('system', null);
+
+  /// Google Public DNS (8.8.8.8).
+  static const google = DNSServer._('google', '8.8.8.8');
+
+  /// Cloudflare DNS (1.1.1.1).
+  static const cloudflare = DNSServer._('cloudflare', '1.1.1.1');
+
+  /// Creates a [DNSServer] targeting a custom DNS server by IP address.
+  ///
+  /// Example:
+  /// ```dart
+  /// final quad9 = DNSServer.custom('9.9.9.9');
+  /// final customPort = DNSServer.custom('192.168.1.1', port: 5353);
+  /// ```
+  const DNSServer.custom(String address, {int port = 53})
+      : _name = 'custom',
+        _address = '$address:$port';
+
+  const DNSServer._(this._name, this._address);
+
+  final String _name;
+
+  /// The server address string passed to the native resolver, or `null`
+  /// for the system default.
+  final String? _address;
+
+  @override
+  String toString() =>
+      'DNSServer($_name${_address != null ? ': $_address' : ''})';
+}
+
+/// A DNS resolver that performs DNS lookups using a native resolver via FFI.
+///
+/// This class resolves DNS queries using the raw DNS protocol (UDP/TCP on
+/// port 53) through a compiled Rust library built on
+/// [hickory-dns](https://github.com/hickory-dns/hickory-dns).
 ///
 /// Example:
 /// ```dart
@@ -70,17 +107,16 @@ enum DNSProvider { google, cloudflare }
 class DNSolve {
   /// Creates a new [DNSolve] instance with default settings.
   ///
-  /// Optionally accepts a custom [http.Client] instance. If not provided,
-  /// a new client will be created. The client will be closed when [dispose]
-  /// is called.
+  /// Optionally accepts a [DNSServer] to use for all queries. Defaults to
+  /// [DNSServer.system] which uses the OS-configured resolver.
   DNSolve({
-    http.Client? client,
+    DNSServer server = DNSServer.system,
     bool enableCache = false,
     int cacheMaxSize = 100,
     bool enableStatistics = false,
     int maxRetries = 0,
     Duration? retryDelay,
-  })  : _client = client ?? http.Client(),
+  })  : _server = server,
         _cache = enableCache ? _DNSCache(maxSize: cacheMaxSize) : null,
         _statistics = enableStatistics ? DNSStatistics() : null,
         _maxRetries = maxRetries,
@@ -93,6 +129,7 @@ class DNSolve {
   /// Example:
   /// ```dart
   /// final dnsolve = DNSolve.builder()
+  ///   .withServer(DNSServer.cloudflare)
   ///   .withCache(enable: true, maxSize: 200)
   ///   .withStatistics(enable: true)
   ///   .withRetries(3)
@@ -101,25 +138,18 @@ class DNSolve {
   /// ```
   static DNSolveBuilder builder() => DNSolveBuilder();
 
-  final http.Client _client;
+  final DNSServer _server;
   final _DNSCache? _cache;
   final DNSStatistics? _statistics;
   final int _maxRetries;
   final Duration _retryDelay;
   bool _disposed = false;
 
-  /// A map that associates [DNSProvider] enum values with their respective DNS
-  /// provider URLs.
-  static const _dnsProviders = <DNSProvider, String>{
-    DNSProvider.google: 'https://dns.google.com/resolve',
-    DNSProvider.cloudflare: 'https://cloudflare-dns.com/dns-query',
-  };
-
   /// Performs a DNS lookup for the given domain.
   ///
   /// Throws [InvalidDomainException] if the domain is empty or invalid.
   /// Throws [TimeoutException] if the query exceeds the specified timeout.
-  /// Throws [NetworkException] if a network error occurs.
+  /// Throws [NativeException] if the native resolver encounters an error.
   /// Throws [DNSLookupException] if the DNS query fails.
   ///
   /// Example:
@@ -140,8 +170,9 @@ class DNSolve {
     /// The DNS record type to look up (defaults to A).
     RecordType type = RecordType.A,
 
-    /// The DNS provider to use (defaults to Google).
-    DNSProvider provider = DNSProvider.google,
+    /// The DNS server to use. If not specified, uses the server configured
+    /// in the constructor (defaults to [DNSServer.system]).
+    DNSServer? server,
 
     /// The timeout duration for the DNS query.
     /// Defaults to 30 seconds if not specified.
@@ -156,8 +187,10 @@ class DNSolve {
       );
     }
 
-    // Check cache first
-    final cacheKey = _getCacheKey(domain, type, provider, dnsSec);
+    final effectiveServer = server ?? _server;
+
+    // Check cache first.
+    final cacheKey = _getCacheKey(domain, type, effectiveServer, dnsSec);
     if (_cache != null) {
       final cached = _cache!.get(cacheKey);
       if (cached != null) {
@@ -165,33 +198,25 @@ class DNSolve {
       }
     }
 
-    // Use DoH (DNS-over-HTTPS)
-    final queryParams = <String, String>{};
-    queryParams
-      ..putIfAbsent('name', () => domain)
-      ..putIfAbsent('type', () => _typeToInt(type).toString())
-      ..putIfAbsent('dnssec', () => dnsSec.toString());
-
-    final headers = <String, String>{'Accept': 'application/dns-json'};
-    final url = _dnsProviders[provider] ?? 'https://dns.google.com/resolve';
-
+    final effectiveTimeout = timeout ?? const Duration(seconds: 30);
     final stopwatch = Stopwatch()..start();
     int attempts = 0;
     Exception? lastException;
 
     while (attempts <= _maxRetries) {
       try {
-        final body = await _get(
-          url,
-          queryParameters: queryParams,
-          headers: headers,
-          timeout: timeout ?? const Duration(seconds: 30),
+        final body = await _resolve(
+          domain,
+          _typeToInt(type),
+          effectiveServer._address,
+          dnsSec,
+          effectiveTimeout,
         );
 
         final response =
             ResolveResponse.fromJson(json.decode(body) as Map<String, dynamic>);
 
-        // Check DNS status code
+        // Check DNS status code.
         if (response.status != null && response.status != 0) {
           throw DNSLookupException(
             _getDNSStatusMessage(response.status!),
@@ -202,7 +227,7 @@ class DNSolve {
         stopwatch.stop();
         _statistics?.recordQuery(stopwatch.elapsed, true);
 
-        // Cache the response
+        // Cache the response.
         _cache?.put(cacheKey, response);
 
         return response;
@@ -218,7 +243,7 @@ class DNSolve {
         rethrow;
       } on DNSolveException catch (e) {
         lastException = e;
-        if (attempts < _maxRetries && e is NetworkException) {
+        if (attempts < _maxRetries && e is NativeException) {
           await Future.delayed(_retryDelay * (attempts + 1));
           attempts++;
           continue;
@@ -227,8 +252,8 @@ class DNSolve {
         _statistics?.recordQuery(stopwatch.elapsed, false);
         rethrow;
       } catch (e) {
-        lastException = NetworkException(
-          'Network error during DNS lookup: $e',
+        lastException = NativeException(
+          'Error during DNS lookup: $e',
           e,
         );
         if (attempts < _maxRetries) {
@@ -245,14 +270,14 @@ class DNSolve {
     stopwatch.stop();
     _statistics?.recordQuery(stopwatch.elapsed, false);
     throw lastException ??
-        const NetworkException('DNS lookup failed after retries');
+        const NativeException('DNS lookup failed after retries');
   }
 
   /// Performs a reverse DNS lookup for the given IP address.
   ///
   /// Throws [InvalidDomainException] if the IP address is invalid.
   /// Throws [TimeoutException] if the query exceeds the specified timeout.
-  /// Throws [NetworkException] if a network error occurs.
+  /// Throws [NativeException] if the native resolver encounters an error.
   ///
   /// Example:
   /// ```dart
@@ -264,8 +289,9 @@ class DNSolve {
   Future<List<Record>> reverseLookup(
     /// The IP address to perform a reverse lookup for.
     String ip, {
-    /// The DNS provider to use (defaults to Google).
-    DNSProvider provider = DNSProvider.google,
+    /// The DNS server to use. If not specified, uses the server configured
+    /// in the constructor (defaults to [DNSServer.system]).
+    DNSServer? server,
 
     /// The timeout duration for the DNS query.
     /// Defaults to 30 seconds if not specified.
@@ -280,72 +306,20 @@ class DNSolve {
       );
     }
 
-    final queryParams = <String, String>{};
-    String? reverse() {
-      // IPv4 reverse lookup
-      if (ip.contains('.')) {
-        final parts = ip.split('.');
-        if (parts.length == 4) {
-          // Validate IPv4 format
-          try {
-            for (final part in parts) {
-              final num = int.parse(part);
-              if (num < 0 || num > 255) {
-                return null;
-              }
-            }
-            return '${parts.reversed.join('.')}.in-addr.arpa';
-          } catch (e) {
-            return null;
-          }
-        }
-        return null;
-      }
-      // IPv6 reverse lookup
-      else if (ip.contains(':')) {
-        try {
-          // Expand IPv6 address to full format
-          final expanded = _expandIPv6(ip);
-          if (expanded == null) {
-            return null;
-          }
-          // Remove colons and reverse each hex digit
-          final hexDigits = expanded.replaceAll(':', '').split('');
-          return '${hexDigits.reversed.join('.')}.ip6.arpa';
-        } catch (e) {
-          return null;
-        }
-      }
-      return null;
-    }
-
-    final reversed = reverse();
-    if (reversed == null) {
-      throw InvalidDomainException(
-        'Invalid IP address format: $ip',
-        ip,
-      );
-    }
-
-    queryParams
-      ..putIfAbsent('name', () => reversed)
-      ..putIfAbsent('type', () => _records[RecordType.ptr]!.toString());
-
-    final headers = <String, String>{'Accept': 'application/dns-json'};
-    final url = _dnsProviders[provider] ?? 'https://dns.google.com/resolve';
+    final effectiveServer = server ?? _server;
+    final effectiveTimeout = timeout ?? const Duration(seconds: 30);
 
     try {
-      final body = await _get(
-        url,
-        queryParameters: queryParams,
-        headers: headers,
-        timeout: timeout ?? const Duration(seconds: 30),
+      final body = await _reverseLookup(
+        ip,
+        effectiveServer._address,
+        effectiveTimeout,
       );
 
       final response =
           ResolveResponse.fromJson(json.decode(body) as Map<String, dynamic>);
 
-      // Check DNS status code
+      // Check DNS status code.
       if (response.status != null && response.status != 0) {
         throw DNSLookupException(
           _getDNSStatusMessage(response.status!),
@@ -359,82 +333,57 @@ class DNSolve {
     } on DNSolveException {
       rethrow;
     } catch (e) {
-      throw NetworkException(
-        'Network error during reverse DNS lookup: $e',
+      throw NativeException(
+        'Error during reverse DNS lookup: $e',
         e,
       );
     }
   }
 
-  /// Sends an HTTP GET request to the specified URL with optional query
-  /// parameters and headers.
-  Future<String> _get(
-    String url, {
-    Map<String, String>? queryParameters,
-    Map<String, String>? headers,
-    Duration? timeout,
-  }) async {
-    late Uri uri;
-    {
-      if (queryParameters == null || queryParameters.isEmpty) {
-        uri = Uri.parse(url);
-      } else {
-        uri = Uri.parse(url).replace(queryParameters: queryParameters);
-      }
-    }
+  /// Runs the native resolve call in a separate isolate with a timeout.
+  Future<String> _resolve(
+    String domain,
+    int recordType,
+    String? dnsServer,
+    bool dnssec,
+    Duration timeout,
+  ) {
+    final result = Isolate.run(() {
+      final resolver = NativeResolver();
+      return resolver.resolve(domain, recordType, dnsServer, dnssec);
+    });
 
-    final response = await _client.get(uri, headers: headers).timeout(
-      timeout ?? const Duration(seconds: 30),
-      onTimeout: () {
+    return Future.any<String>([
+      result,
+      Future.delayed(timeout).then<String>((_) {
         throw TimeoutException(
-          'HTTP request timed out',
-          timeout ?? const Duration(seconds: 30),
+          'DNS query timed out',
+          timeout,
         );
-      },
-    );
-
-    return _handleResponse(response);
+      }),
+    ]);
   }
 
-  /// Expands an IPv6 address to its full format.
-  ///
-  /// Example: "2001:db8::1" -> "2001:0db8:0000:0000:0000:0000:0000:0001"
-  String? _expandIPv6(String ip) {
-    try {
-      // Handle double colon expansion
-      if (ip.contains('::')) {
-        final parts = ip.split('::');
-        if (parts.length != 2) {
-          return null;
-        }
+  /// Runs the native reverse lookup call in a separate isolate with a timeout.
+  Future<String> _reverseLookup(
+    String ip,
+    String? dnsServer,
+    Duration timeout,
+  ) {
+    final result = Isolate.run(() {
+      final resolver = NativeResolver();
+      return resolver.reverseLookup(ip, dnsServer);
+    });
 
-        final leftParts = parts[0].isEmpty ? <String>[] : parts[0].split(':');
-        final rightParts = parts[1].isEmpty ? <String>[] : parts[1].split(':');
-
-        final totalParts = leftParts.length + rightParts.length;
-        if (totalParts > 8) {
-          return null;
-        }
-
-        final missingParts = 8 - totalParts;
-        final expanded = <String>[
-          ...leftParts,
-          ...List.filled(missingParts, '0'),
-          ...rightParts,
-        ];
-
-        return expanded.map((p) => p.padLeft(4, '0')).join(':');
-      } else {
-        // No double colon, just pad each part
-        final parts = ip.split(':');
-        if (parts.length != 8) {
-          return null;
-        }
-        return parts.map((p) => p.padLeft(4, '0')).join(':');
-      }
-    } catch (e) {
-      return null;
-    }
+    return Future.any<String>([
+      result,
+      Future.delayed(timeout).then<String>((_) {
+        throw TimeoutException(
+          'Reverse DNS query timed out',
+          timeout,
+        );
+      }),
+    ]);
   }
 
   /// Returns a human-readable message for DNS status codes.
@@ -479,7 +428,7 @@ class DNSolve {
     List<String> domains, {
     bool dnsSec = false,
     RecordType type = RecordType.A,
-    DNSProvider provider = DNSProvider.google,
+    DNSServer? server,
     Duration? timeout,
   }) async {
     _checkDisposed();
@@ -493,7 +442,7 @@ class DNSolve {
         domain,
         dnsSec: dnsSec,
         type: type,
-        provider: provider,
+        server: server,
         timeout: timeout,
       ),
     );
@@ -518,21 +467,19 @@ class DNSolve {
   String _getCacheKey(
     String domain,
     RecordType type,
-    DNSProvider provider,
+    DNSServer server,
     bool dnsSec,
   ) {
-    return '$domain:$type:$provider:$dnsSec';
+    return '$domain:$type:$server:$dnsSec';
   }
 
   /// Disposes of resources used by this [DNSolve] instance.
   ///
-  /// This method closes the underlying HTTP client. After calling this method,
-  /// this instance should not be used anymore.
+  /// After calling this method, this instance should not be used anymore.
   ///
   /// It is safe to call this method multiple times.
   void dispose() {
     if (!_disposed) {
-      _client.close();
       _cache?.clear();
       _disposed = true;
     }
