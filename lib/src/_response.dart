@@ -1,17 +1,5 @@
 part of 'dnsolve.dart';
 
-String _handleResponse(http.Response response) {
-  if (response.statusCode >= 200 && response.statusCode <= 209) {
-    return response.body;
-  } else {
-    throw ResponseException(
-      body: response.body,
-      headers: response.headers,
-      statusCode: response.statusCode,
-    );
-  }
-}
-
 /// Represents a response from a DNS resolution operation.
 ///
 /// This class includes information about the resolution status, flags,
